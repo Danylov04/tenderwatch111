@@ -50,9 +50,9 @@ jobs:
         run: |
           DAYS="${{ github.event.inputs.days || '2' }}"
           if [ "${{ github.event.inputs.quiet }}" = "true" ]; then
-            tenderwatch -v run --mode sweep --days "$DAYS" --quiet
+            tenderwatch run --mode sweep --days "$DAYS" --quiet
           else
-            tenderwatch -v run --mode sweep --days "$DAYS"
+            tenderwatch run --mode sweep --days "$DAYS"
           fi
 
       - name: Зберегти базу для наступного запуску
