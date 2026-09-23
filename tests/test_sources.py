@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import pytest
 
 from tenderwatch.sources import EzamSource, PzSource, TedSource, Window
@@ -198,3 +199,44 @@ def _from_eq_to(url: str) -> bool:
     from urllib.parse import parse_qs, urlparse
     q = parse_qs(urlparse(url).query)
     return q["PublicationDateFrom"] == q["PublicationDateTo"]
+
+
+class _FlakyDayEzam(FakeEzam):
+    """Один конкретний день (PublicationDateFrom == bad_day) завжди повертає 500."""
+
+    def __init__(self, items, bad_days: set[str]):
+        super().__init__(items)
+        self.bad_days = bad_days
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        q = dict(request.url.params)
+        if q.get("PublicationDateFrom") in self.bad_days:
+            self.calls.append(str(request.url))
+            return httpx.Response(500, text="boom")
+        return super().__call__(request)
+
+
+def test_ezam_sweep_skips_single_bad_day_but_keeps_the_rest(rules):
+    """Регресія: до фіксу один збійний день у sweep обривав ВЕСЬ діапазон (втрачались усі вже оброблені дні)."""
+    items = [make_item(f"Cokolwiek {i}", publicationDate=iso_days(-i + 0.01)) for i in range(0, 5)]
+    bad_day = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
+    fake = _FlakyDayEzam(items, bad_days={bad_day})
+    src = EzamSource(make_http(ezam=fake), rules)
+
+    got = list(src.sweep(Window(datetime.now(UTC) - timedelta(days=4), datetime.now(UTC))))
+
+    got_titles = {n.title for n in got}
+    assert "Cokolwiek 2" not in got_titles           # збійний день пропущено...
+    assert got_titles == {"Cokolwiek 0", "Cokolwiek 1", "Cokolwiek 3", "Cokolwiek 4"}  # ...а решта днів оброблена
+    assert any("пропущено" in w and bad_day in w for w in src.stats.warnings)
+
+
+def test_ezam_sweep_gives_up_after_too_many_consecutive_bad_days(rules):
+    """3 дні поспіль впали -> це вже не глюк, а системна проблема: sweep має підняти помилку, а не мовчати."""
+    items = [make_item(f"Cokolwiek {i}", publicationDate=iso_days(-i + 0.01)) for i in range(0, 5)]
+    bad_days = {(datetime.now(UTC) - timedelta(days=d)).strftime("%Y-%m-%d") for d in (1, 2, 3)}
+    fake = _FlakyDayEzam(items, bad_days=bad_days)
+    src = EzamSource(make_http(ezam=fake), rules)
+
+    with pytest.raises(SourceError):
+        list(src.sweep(Window(datetime.now(UTC) - timedelta(days=4), datetime.now(UTC))))

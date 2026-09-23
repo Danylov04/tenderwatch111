@@ -184,8 +184,15 @@ class EzamSource(Source):
         Йдемо ПО ДНЯХ: кожен день — окремий запит з From=To=день. Так довгий backfill не впирається в ліміт сторінок,
         видно прогрес у логах, а збій одного дня не губить решту. Guard приймає ±1 добу навколо дня (межі доби
         в API можуть рахуватися за Варшавою), його мета — відловити ситуацію, коли фільтр дат узагалі ігнорується.
+
+        Збій ОДНОГО дня (тимчасовий HTTP-збій, рейт-ліміт, короткий глюк guard'а) не повинен ховати всі вже
+        оброблені дні під одним "failed" — тому тут ловимо SourceError/HttpError per-день і йдемо далі. Але якщо
+        падає багато днів ПОСПІЛЬ — це вже не «глюк одного дня», а системна проблема (джерело лежить/блокує нас),
+        і її ховати не можна.
         """
         day, last = window.start.date(), window.end.date()
+        consecutive_failures = 0
+        max_consecutive_failures = 3
         while day <= last:
             d = day.isoformat()
             base = parse_dt(d)
@@ -197,12 +204,23 @@ class EzamSource(Source):
                 return bool(p and lo and hi and lo <= iso(p) < hi)
 
             n = 0
-            for it in self._walk({"PublicationDateFrom": d, "PublicationDateTo": d}, None, in_window,
-                                 f"PublicationDate {d}", max_pages=MAX_PAGES_SWEEP):
-                n += 1
-                self.stats.count("sweep")
-                yield to_notice(it, "sweep")
-            log.info("sweep %s: %d оголошень", d, n)
+            try:
+                for it in self._walk({"PublicationDateFrom": d, "PublicationDateTo": d}, None, in_window,
+                                     f"PublicationDate {d}", max_pages=MAX_PAGES_SWEEP):
+                    n += 1
+                    self.stats.count("sweep")
+                    yield to_notice(it, "sweep")
+                log.info("sweep %s: %d оголошень", d, n)
+                consecutive_failures = 0
+            except (SourceError, HttpError) as e:
+                consecutive_failures += 1
+                msg = f"sweep {d}: пропущено ({type(e).__name__}: {e})"
+                log.warning(msg)
+                self.stats.warnings.append(msg)
+                if consecutive_failures >= max_consecutive_failures:
+                    raise SourceError(
+                        f"sweep: {consecutive_failures} днів поспіль впали, останній {d}: {e}"
+                    ) from e
             day += timedelta(days=1)
 
     # ---- деталі ----
