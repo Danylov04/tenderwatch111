@@ -1,0 +1,27 @@
+name: doctor
+
+# Ручний запуск (Actions → doctor → Run workflow): жива перевірка джерел без торкання збереженого
+# стану. Вивід дивіться у логах цього запуску (крок "doctor").
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      DB_PATH: data/tenderwatch.sqlite3
+      RULES_PATH: rules.toml
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install .
+
+      - run: mkdir -p data
+
+      - name: doctor
+        run: tenderwatch doctor

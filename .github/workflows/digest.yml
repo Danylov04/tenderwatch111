@@ -1,0 +1,40 @@
+name: digest
+
+# Щоденний дайджест у Telegram: дедлайни найближчих 14 днів, стан джерел.
+# По понеділках notify.build_digest сам додає тижневий звіт про повноту (recall) — окремого кроку не треба.
+
+on:
+  schedule:
+    - cron: "0 4 * * *"   # ~06:00–07:00 за Києвом залежно від пори року
+  workflow_dispatch: {}
+
+concurrency:
+  group: tenderwatch-state
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      DB_PATH: data/tenderwatch.sqlite3
+      RULES_PATH: rules.toml
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install .
+
+      - name: Відновити базу
+        run: |
+          mkdir -p data
+          gh release download state -p 'tenderwatch.sqlite3' -D data --clobber \
+            || echo "збереженого стану ще нема"
+
+      - name: digest
+        run: tenderwatch digest --send

@@ -1,0 +1,64 @@
+name: sweep
+
+# Щоночі (орієнтовно) проходить усі оголошення e-Zamówienia за вікно днів і аналізує тіла
+# оголошень на будівельні CPV (45*, 71*) — це те, що ловить "schron", згаданий лише в тілі, а не в назві.
+
+on:
+  schedule:
+    - cron: "0 1 * * *"   # ~02:00–03:00 за Варшавою залежно від пори року
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Глибина вікна в днях (для першого наповнення — напр. 14)"
+        default: "2"
+      quiet:
+        description: "Без сповіщень у Telegram (true для першого наповнення)"
+        default: "false"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tenderwatch-state
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      DB_PATH: data/tenderwatch.sqlite3
+      RULES_PATH: rules.toml
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install .
+
+      - name: Відновити базу з попереднього запуску
+        run: |
+          mkdir -p data
+          gh release download state -p 'tenderwatch.sqlite3' -D data --clobber \
+            || echo "збереженого стану ще нема — починаємо з чистої бази"
+
+      - name: sweep
+        run: |
+          DAYS="${{ github.event.inputs.days || '2' }}"
+          if [ "${{ github.event.inputs.quiet }}" = "true" ]; then
+            tenderwatch -v run --mode sweep --days "$DAYS" --quiet
+          else
+            tenderwatch -v run --mode sweep --days "$DAYS"
+          fi
+
+      - name: Зберегти базу для наступного запуску
+        if: always()
+        run: |
+          gh release view state >/dev/null 2>&1 || \
+            gh release create state --title "tenderwatch: стан (не редагувати вручну)" \
+              --notes "Автоматичний знімок бази tenderwatch. Використовується GitHub Actions." --prerelease
+          gh release upload state data/tenderwatch.sqlite3 --clobber

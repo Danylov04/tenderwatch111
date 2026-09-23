@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tenderwatch"
+version = "0.1.0"
+description = "Deterministic monitor of Polish public tenders (shelters / civil protection) with change tracking and recall metrics"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+  "beautifulsoup4>=4.12",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+tenderwatch = "tenderwatch.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+tenderwatch = ["web/static/*", "default_rules.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/tenderwatch/web/app.py" = ["B008"]   # Depends() у дефолтах — ідіома FastAPI

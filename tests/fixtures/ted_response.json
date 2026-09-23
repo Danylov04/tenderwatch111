@@ -1,0 +1,31 @@
+{
+  "notices": [
+    {
+      "deadline-receipt-tender-date-lot": ["2026-09-14+02:00"],
+      "notice-type": "cn-standard",
+      "publication-number": "557381-2026",
+      "classification-cpv": ["45110000", "45216129", "45210000", "45311000", "45110000", "45216129"],
+      "buyer-name": {"pol": ["Samodzielny Publiczny Zakład Opieki Zdrowotnej w Łęcznej"]},
+      "publication-date": "2026-08-12+02:00",
+      "notice-title": {
+        "pol": "Polska – Roboty w zakresie burzenia i rozbiórki obiektów budowlanych; roboty ziemne – Budowa miejsca schronienia i miejsca ewakuacji szpitala z zapleczem powalającym na udzielnie świadczeń zdrowotnych, a w czasie pokoju pełniącego rolę parkingu podziemnego i zaplecza magazynowego",
+        "eng": "Poland – Building demolition and wrecking work and earthmoving work – Budowa miejsca schronienia i miejsca ewakuacji szpitala z zapleczem powalającym na udzielnie świadczeń zdrowotnych, a w czasie pokoju pełniącego rolę parkingu podziemnego i zaplecza magazynowego"
+      },
+      "links": {"html": {"ENG": "https://ted.europa.eu/en/notice/-/detail/557381-2026", "POL": "https://ted.europa.eu/pl/notice/-/detail/557381-2026"}}
+    },
+    {
+      "notice-type": "can-standard",
+      "publication-number": "645567-2026",
+      "classification-cpv": ["45110000", "45216129", "45210000"],
+      "buyer-name": {"pol": ["Samodzielny Publiczny Zakład Opieki Zdrowotnej w Łęcznej"]},
+      "publication-date": "2026-09-18+02:00",
+      "notice-title": {
+        "pol": "Polska – Roboty w zakresie burzenia i rozbiórki obiektów budowlanych; roboty ziemne – Budowa miejsca schronienia i miejsca ewakuacji szpitala z zapleczem powalającym na udzielnie świadczeń zdrowotnych, a w czasie pokoju pełniącego rolę parkingu podziemnego i zaplecza magazynowego"
+      },
+      "links": {"html": {"ENG": "https://ted.europa.eu/en/notice/-/detail/645567-2026"}}
+    }
+  ],
+  "totalNoticeCount": 2,
+  "iterationNextToken": null,
+  "timedOut": false
+}

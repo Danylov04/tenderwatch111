@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tenderwatch — тендери на укриття</title>
+<style>
+:root{
+  --bg:#f6f7f9;--panel:#fff;--ink:#16202a;--muted:#5b6672;--line:#dfe3e8;--accent:#1d5fd1;--accent-ink:#fff;
+  --ok:#1a7f4b;--warn:#b26a00;--bad:#c0392b;--chip:#eef1f5;--soft-ok:#e6f4ec;--soft-warn:#fff3df;--soft-bad:#fdeceb;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0f1418;--panel:#171e24;--ink:#e6ebf0;--muted:#93a0ad;--line:#28323b;--accent:#5a9bff;--accent-ink:#0b1220;
+  --ok:#4cc38a;--warn:#f0b04a;--bad:#ff7b6e;--chip:#202a33;--soft-ok:#12281d;--soft-warn:#2b2110;--soft-bad:#2e1512;}}
+:root[data-theme=dark]{--bg:#0f1418;--panel:#171e24;--ink:#e6ebf0;--muted:#93a0ad;--line:#28323b;--accent:#5a9bff;--accent-ink:#0b1220;
+  --ok:#4cc38a;--warn:#f0b04a;--bad:#ff7b6e;--chip:#202a33;--soft-ok:#12281d;--soft-warn:#2b2110;--soft-bad:#2e1512;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+a{color:var(--accent)}
+header{padding:14px 16px 8px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between}
+h1{font-size:18px;margin:0}
+.health{display:flex;flex-wrap:wrap;gap:6px}
+.dot{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:99px;background:var(--chip);font-size:12.5px;cursor:default}
+.dot i{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block}
+.dot.warn i{background:var(--warn)}.dot.fail i{background:var(--bad)}
+.bar{padding:8px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bar input,.bar select{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit;max-width:100%}
+.bar input[type=search]{min-width:220px;flex:1}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+main{padding:8px 16px 40px;display:grid;gap:10px}
+.count{color:var(--muted);font-size:13px;padding:0 16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;grid-template-columns:96px 1fr auto;gap:12px;align-items:start}
+.card.skip{opacity:.55}
+.dl{text-align:center;border-radius:10px;padding:8px 4px;background:var(--chip);font-size:12.5px;line-height:1.25}
+.dl b{display:block;font-size:20px}
+.dl.soon{background:var(--soft-warn)}.dl.urgent{background:var(--soft-bad)}.dl.ok{background:var(--soft-ok)}
+.title{font-weight:600;cursor:pointer}
+.meta{color:var(--muted);font-size:13px;margin-top:3px}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.chip{background:var(--chip);border-radius:6px;padding:1px 7px;font-size:12px}
+.chip.rel{background:var(--soft-ok);color:var(--ok)}.chip.rev{background:var(--soft-warn);color:var(--warn)}
+.actions{display:flex;flex-direction:column;gap:6px}
+.actions .btn{font-size:13px;padding:4px 9px}
+#drawer{position:fixed;inset:0 0 0 auto;width:min(680px,100%);background:var(--panel);border-left:1px solid var(--line);
+  transform:translateX(102%);transition:transform .18s;overflow:auto;padding:16px;z-index:5;box-shadow:-8px 0 30px #0003}
+#drawer.open{transform:none}
+#drawer h2{font-size:17px;margin:0 30px 6px 0}
+#drawer h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:16px 0 6px}
+#drawer table{width:100%;border-collapse:collapse;font-size:13px}
+#drawer td,#drawer th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}
+.close{position:absolute;right:12px;top:10px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all}
+textarea{width:100%;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 16px 8px}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+@media(max-width:640px){.card{grid-template-columns:72px 1fr}.actions{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Tenderwatch · укриття, Польща</h1>
+  <div class="health" id="health"></div>
+</header>
+<div class="bar">
+  <input type="search" id="q" placeholder="Пошук: назва, замовник, референс…">
+  <select id="relevance">
+    <option value="relevant">Релевантні</option>
+    <option value="relevant,review" selected>Релевантні + на перевірку</option>
+    <option value="review">Лише на перевірку</option>
+    <option value="noise">Шум (аудит)</option>
+  </select>
+  <select id="lifecycle">
+    <option value="open" selected>Відкриті</option>
+    <option value="">Усі статуси</option>
+    <option value="awarded,closed,cancelled">Завершені</option>
+  </select>
+  <select id="status">
+    <option value="">Мій статус: будь-який</option>
+    <option value="new">нові</option><option value="watch">стежу</option>
+    <option value="applied">подано</option><option value="skip">пропустити</option>
+  </select>
+  <select id="province"><option value="">Усі воєводства</option></select>
+  <select id="category"><option value="">Усі категорії</option></select>
+  <select id="sort">
+    <option value="deadline">За дедлайном</option><option value="published">Найновіші</option>
+    <option value="changed">Остання зміна</option><option value="score">За релевантністю</option>
+    <option value="value">За вартістю</option>
+  </select>
+  <button class="btn" id="btnRecall">Повнота</button>
+  <button class="btn" id="btnTheme" title="Тема">◐</button>
+</div>
+<div class="count" id="count"></div>
+<div class="panel" id="recall" hidden></div>
+<main id="list"></main>
+<aside id="drawer" aria-label="Деталі тендера"><button class="btn close" id="close">×</button><div id="dbody"></div></aside>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CAT={shelter:'укриття',modular_shelter:'модульне укриття',dual_use:'подвійного призначення',military:'військове',infrastructure:'інфраструктура ЦО',other:'інше'};
+const LIFE={open:'відкрито',awarded:'укладено договір',closed:'закрито',cancelled:'скасовано',planned:'план',unknown:'?'};
+const EV={new:'Новий',deadline_changed:'Змінено дедлайн',lifecycle_changed:'Зміна статусу',new_notice:'Нове оголошення',republished:'Повторна публікація',
+  value_changed:'Змінено вартість',title_changed:'Змінено назву',relevance_changed:'Змінено релевантність',source_added:'Додано джерело',merged:'Об’єднано дублікат',
+  deadline_passed:'Дедлайн минув',deadline_3d:'Нагадування (3 дні)',deadline_1d:'Нагадування (1 день)',user_status:'Мій статус'};
+const ST={new:'нове',watch:'стежу',applied:'подано',skip:'пропустити'};
+let theme=null;try{theme=localStorage.getItem('tw-theme')}catch(e){}
+if(theme)document.documentElement.dataset.theme=theme;
+$('#btnTheme').onclick=()=>{const d=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=d;try{localStorage.setItem('tw-theme',d)}catch(e){}};
+
+const fmtDT=iso=>{if(!iso)return '—';const d=new Date(iso);return d.toLocaleString('uk-UA',{timeZone:'Europe/Warsaw',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})};
+function left(iso){if(!iso)return {t:'—',s:'',c:''};const ms=new Date(iso)-Date.now();
+  if(ms<0)return {t:'минув',s:'',c:''};
+  const d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5);
+  return d>0?{t:d+' дн',s:h+' год',c:d<=1?'urgent':d<=4?'soon':'ok'}:{t:h+' год',s:'сьогодні',c:'urgent'}}
+async function api(path,opt){const r=await fetch(path,opt);if(!r.ok)throw new Error((await r.text())||r.status);return r.json()}
+
+async function loadHealth(){
+  try{const h=await api('/api/health');
+    $('#health').innerHTML=h.sources.map(s=>`<span class="dot ${s.status}" title="${esc(s.problems.join('; ')||('останній запуск '+fmtDT(s.last_run)+', отримано '+s.fetched))}"><i></i>${esc(s.source)}/${esc(s.mode)}</span>`).join('')||'<span class="dot"><i></i>ще не було запусків</span>';
+  }catch(e){$('#health').innerHTML='<span class="dot fail"><i></i>API недоступне</span>'}}
+async function loadFacets(){
+  const f=await api('/api/facets');
+  $('#province').innerHTML='<option value="">Усі воєводства</option>'+f.province.map(x=>`<option value="${esc(x.v)}">${esc(x.v)} (${x.n})</option>`).join('');
+  $('#category').innerHTML='<option value="">Усі категорії</option>'+f.category.map(x=>`<option value="${esc(x.v)}">${esc(CAT[x.v]||x.v)} (${x.n})</option>`).join('')}
+
+async function load(){
+  const p=new URLSearchParams({relevance:$('#relevance').value,lifecycle:$('#lifecycle').value,status:$('#status').value,
+    province:$('#province').value,category:$('#category').value,sort:$('#sort').value,q:$('#q').value.trim()});
+  const d=await api('/api/tenders?'+p);
+  $('#count').textContent=`Знайдено: ${d.total}`+(d.total>d.items.length?` (показано ${d.items.length})`:'');
+  $('#list').innerHTML=d.items.length?d.items.map(card).join(''):'<div class="empty">Нічого не знайдено за цими фільтрами.</div>';
+}
+function card(t){
+  const l=left(t.deadline);
+  const val=t.value_amount?`${Math.round(t.value_amount).toLocaleString('uk-UA')} ${esc(t.value_currency||'PLN')}`:'';
+  return `<article class="card ${t.user_status==='skip'?'skip':''}" id="t${t.pk}">
+    <div class="dl ${l.c}"><b>${l.t}</b>${l.s}<div>${fmtDT(t.deadline).slice(0,10)}</div></div>
+    <div><div class="title" data-pk="${t.pk}">${esc(t.title)}</div>
+      <div class="meta">${esc(t.buyer)}${t.province?' · '+esc(t.province):''}${t.city?' · '+esc(t.city):''}</div>
+      <div class="chips">
+        <span class="chip ${t.relevance==='relevant'?'rel':'rev'}">${t.relevance==='relevant'?'релевантний':t.relevance==='review'?'на перевірку':'шум'}</span>
+        <span class="chip">${esc(CAT[t.category]||t.category||'—')}</span>
+        <span class="chip">${esc(LIFE[t.lifecycle]||t.lifecycle)}</span>
+        ${val?`<span class="chip">${val}</span>`:''}
+        ${t.attempts>1?`<span class="chip">спроба №${t.attempts}</span>`:''}
+        ${t.sources.map(s=>`<span class="chip">${esc(s)}</span>`).join('')}
+        ${t.user_status!=='new'?`<span class="chip rel">${ST[t.user_status]}</span>`:''}
+      </div></div>
+    <div class="actions">
+      ${t.url?`<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener">Відкрити</a>`:''}
+      <button class="btn ${t.user_status==='watch'?'on':''}" data-st="watch" data-pk="${t.pk}">Стежу</button>
+      <button class="btn ${t.user_status==='applied'?'on':''}" data-st="applied" data-pk="${t.pk}">Подано</button>
+      <button class="btn ${t.user_status==='skip'?'on':''}" data-st="skip" data-pk="${t.pk}">Пропустити</button>
+    </div></article>`}
+
+async function setStatus(pk,st,note){
+  await api(`/api/tenders/${pk}/status`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:st,note:note})});}
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-st]');
+  if(b){const cur=b.classList.contains('on');await setStatus(b.dataset.pk,cur?'new':b.dataset.st);await load();if($('#drawer').classList.contains('open'))openTender(b.dataset.pk);return}
+  const t=e.target.closest('.title');if(t)openTender(t.dataset.pk)});
+$('#close').onclick=()=>{$('#drawer').classList.remove('open');history.replaceState(null,'',location.pathname)};
+
+async function openTender(pk){
+  const t=await api('/api/tenders/'+pk);history.replaceState(null,'','#t'+pk);
+  const ev=t.events.map(e=>`<tr><td>${fmtDT(e.at)}</td><td>${esc(EV[e.kind]||e.kind)}</td><td class="mono">${esc(JSON.stringify(e.detail))}</td></tr>`).join('');
+  const nt=t.notices.map(n=>`<tr><td>${esc(n.source)}</td><td>${esc(n.notice_type)}</td><td>${fmtDT(n.published_at)}</td><td>${n.url?`<a href="${esc(n.url)}" target="_blank" rel="noopener">відкрити</a>`:''}</td></tr>`).join('');
+  const ct=(t.contractors||[]).map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.city)}</td><td>${esc(c.nip)}</td></tr>`).join('');
+  $('#dbody').innerHTML=`<h2>${esc(t.title)}</h2>
+   <div class="meta">${esc(t.buyer)} ${t.buyer_nip?'· NIP '+esc(t.buyer_nip):''} · ${esc(t.province)} ${esc(t.city)}</div>
+   <div class="chips"><span class="chip">${esc(CAT[t.category]||t.category)}</span><span class="chip">${esc(LIFE[t.lifecycle])}</span><span class="chip">бал ${t.score}</span>
+     ${t.reference?`<span class="chip">${esc(t.reference)}</span>`:''}${t.contact_email?`<span class="chip">${esc(t.contact_email)}</span>`:''}</div>
+   <h3>Дедлайн</h3><div>${fmtDT(t.deadline)} (Варшава) · джерело дедлайну: ${esc(t.deadline_src||'—')}</div>
+   <h3>Чому такий вердикт</h3><div>${t.reasons.map(r=>`<div class="mono">${esc(r)}</div>`).join('')||'—'}</div>
+   ${t.description?`<h3>Предмет замовлення</h3><div>${esc(t.description)}</div>`:''}
+   <h3>CPV</h3><div class="mono">${esc((t.cpv_all||[]).join(', ')||'—')}</div>
+   ${ct?`<h3>Виконавці (результат)</h3><table>${ct}</table>`:''}
+   <h3>Оголошення (версії процедури)</h3><table>${nt}</table>
+   <h3>Історія змін</h3><table>${ev||'<tr><td>—</td></tr>'}</table>
+   <h3>Як знайдено</h3><div class="mono">${t.hits.map(h=>esc(h.source+' · '+h.strategy)).join('<br>')}</div>
+   <h3>Ключі</h3><div class="mono">${t.keys.map(esc).join('<br>')}</div>
+   <h3>Знімків джерел: ${t.snapshots.length}</h3>
+   <h3>Нотатка</h3><textarea id="note" rows="3">${esc(t.user_note)}</textarea>
+   <div style="margin-top:6px"><button class="btn" id="saveNote">Зберегти нотатку</button></div>`;
+  $('#saveNote').onclick=async()=>{await setStatus(pk,t.user_status,$('#note').value);$('#saveNote').textContent='Збережено'};
+  $('#drawer').classList.add('open')}
+
+$('#btnRecall').onclick=async()=>{const p=$('#recall');if(!p.hidden){p.hidden=true;return}
+  const r=await api('/api/recall');
+  p.innerHTML=`<b>Повнота пошуку.</b> Знайдено релевантних: ${r.union}; оцінка загалом ≈ ${r.estimated_total}; ймовірно непомічених ≈ ${r.estimated_unseen}.
+   <div class="meta">${esc(r.note)}</div>
+   <table style="width:100%;font-size:13px;margin-top:6px"><tr><th align=left>Канал</th><th>знайдено</th><th>лише цей канал</th></tr>
+   ${r.channels.map(c=>`<tr><td>${esc(c.channel)}</td><td align=center>${c.found}</td><td align=center>${c.unique_only}</td></tr>`).join('')}</table>
+   ${(r.canaries||[]).length?`<div style="margin-top:6px">Канарки: ${r.canaries.map(c=>`<span class="chip ${c.found?'rel':'rev'}">${esc(c.id.slice(0,24))} ${c.found?'ок':'НЕ ЗНАЙДЕНО'}</span>`).join(' ')}</div>`:''}`;
+  p.hidden=false};
+
+let timer;$('#q').addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(load,250)});
+['relevance','lifecycle','status','province','category','sort'].forEach(id=>$('#'+id).addEventListener('change',load));
+(async()=>{await Promise.all([loadHealth(),loadFacets()]);await load();
+  if(location.hash.startsWith('#t'))openTender(location.hash.slice(2));setInterval(loadHealth,60000)})();
+</script>
+</body>
+</html>

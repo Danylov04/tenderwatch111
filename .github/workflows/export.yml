@@ -1,0 +1,64 @@
+name: export
+
+# Ручний запуск (Actions → export → Run workflow): надсилає поточний список тендерів
+# у Telegram як CSV-файл. Заміна "веб-дашборду на запит" без постійного сервера.
+
+on:
+  workflow_dispatch:
+    inputs:
+      relevance:
+        description: "Які категорії включити (через кому)"
+        default: "relevant,review"
+
+concurrency:
+  group: tenderwatch-state
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      DB_PATH: data/tenderwatch.sqlite3
+      RULES_PATH: rules.toml
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install .
+
+      - name: Відновити базу
+        run: |
+          mkdir -p data
+          gh release download state -p 'tenderwatch.sqlite3' -D data --clobber \
+            || echo "збереженого стану ще нема"
+
+      - name: Сформувати CSV
+        run: |
+          REL="${{ github.event.inputs.relevance || 'relevant,review' }}"
+          tenderwatch export --relevance "$REL" > tenders.csv
+          wc -l tenders.csv
+
+      - name: Надіслати в Telegram
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID не задані в секретах репозиторію" >&2
+            exit 1
+          fi
+          curl -sS -f \
+            -F document=@tenders.csv \
+            -F chat_id="$TELEGRAM_CHAT_ID" \
+            -F caption="Тендери станом на $(date -u +%F)" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument"
+
+      - name: Також покласти файл у результати запуску
+        uses: actions/upload-artifact@v4
+        with:
+          name: tenders-csv
+          path: tenders.csv
+          retention-days: 14

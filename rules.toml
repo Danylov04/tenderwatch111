@@ -1,0 +1,124 @@
+# Правила відбору. Копія цього файлу може лежати поруч з БД (RULES_PATH) і перевизначає дефолт.
+# Усі regex — Python `re`, без урахування регістру. Нічого не «зашито» в коді: змінили тут — змінилась класифікація.
+
+[cpv]
+# Точні коди, що однозначно означають укриття / оборонні споруди
+strong = ["45216129", "45216230", "45216220", "45216250"]
+# Батьківські коди: самі по собі лише «на перевірку»
+medium = ["45216000", "45216100", "45216200", "45215200"]
+# Будівельні коди, для яких при sweep додатково скануємо ТІЛО оголошення (там може бути «schron», якого нема в назві)
+construction_prefixes = ["45", "71"]
+
+[search]
+# Ключові слова для пошуку по назві (e-Zamówienia робить підрядковий збіг, тому основи слів + відмінки)
+title_keywords = [
+  "schron", "ukryci", "ukryć", "MDS", "doraźnego schronienia",
+  "ochrona cywilna", "ochrony cywilnej", "obrona cywilna", "obrony cywilnej",
+  "ochrony ludności", "ochrona ludności", "budowli ochronnej", "budowla ochronna",
+  "ochronn", "modułow", "podwójnej funkcji", "podwójnego przeznaczenia", "dual-use",
+  "fortyfikacj", "bunkier", "bunkr",
+]
+# Ключові слова для platformazakupowa.pl (там повнотекстовий пошук, тому менше форм)
+pz_keywords = ["schron", "ukryci", "MDS", "ochronn", "ochrony ludności", "modułow", "podwójnej funkcji", "podwójnego przeznaczenia", "fortyfikacj", "bunkier"]
+# CPV-коди для точного CPV-пошуку (e-Zamówienia Board/Search?CpvCode=..., TED classification-cpv=...)
+cpv_codes = ["45216129", "45216230", "45216220", "45216250", "45216000", "45216100", "45216200", "45215200"]
+
+[classify]
+# Вага сильних/середніх ознак у НАЗВІ; у тілі оголошення ваги множаться на body_factor
+body_factor = 0.7
+relevant_threshold = 3.0
+review_threshold = 1.0
+
+# (regex, вага, тег-категорія)
+[[classify.positive]]
+pattern = 'schron(?!isk)\w*'
+weight = 4.0
+tag = "shelter"
+[[classify.positive]]
+pattern = 'ukryci\w*|ukryć\w*|miejsc\w*\s+ukrycia'
+weight = 4.0
+tag = "shelter"
+[[classify.positive]]
+pattern = 'miejsc\w*\s+doraźnego\s+schronienia'
+weight = 4.5
+tag = "shelter"
+[[classify.positive]]
+pattern = '\bMDS\b'
+weight = 3.5
+tag = "shelter"
+[[classify.positive]]
+pattern = 'budowl\w*\s+ochronn\w*|obiekt\w*\s+ochronn\w*|budowli\s+ochronnych'
+weight = 4.0
+tag = "shelter"
+[[classify.positive]]
+pattern = 'podwójn\w*\s+(?:funkcj\w*|przeznaczeni\w*)|dual[\s-]?use'
+weight = 3.5
+tag = "dual_use"
+[[classify.positive]]
+pattern = 'bunkr\w*|bunkier\w*|fortyfikac\w*'
+weight = 3.5
+tag = "military"
+[[classify.positive]]
+pattern = '\bU-?1\b|kategori\w*\s+(?:1|I)\b'
+weight = 2.0
+tag = "shelter"
+[[classify.positive]]
+pattern = 'obron\w*\s+cywiln\w*|ochron\w*\s+cywiln\w*'
+weight = 2.0
+tag = "civil_defense"
+[[classify.positive]]
+pattern = 'ochron\w*\s+ludności'
+weight = 1.5
+tag = "civil_defense"
+[[classify.positive]]
+pattern = 'modułow\w*|kontenerow\w*'
+weight = 0.5
+tag = "modular"
+[[classify.positive]]
+pattern = 'ochronn\w*'
+weight = 0.6
+tag = ""
+
+# Шум: враховується як штраф і як причина для «на перевірку». Сильний CPV шум перебиває.
+[[classify.negative]]
+pattern = 'schronisk\w*'
+weight = 4.0
+reason = "schronisko (притулок для тварин/безхатченків)"
+[[classify.negative]]
+pattern = 'bezdomn\w*|zwierz\w*|kotów|psów|nietoperz\w*'
+weight = 2.5
+reason = "тварини/безхатченки"
+[[classify.negative]]
+pattern = 'wiat\w*\s+(?:przystank\w*|rowerow\w*|śmietnik\w*)|przystank\w*'
+weight = 3.0
+reason = "автобусні зупинки/вітальні"
+[[classify.negative]]
+pattern = 'ochron\w*\s+(?:środowisk\w*|przyrod\w*|zdrowi\w*|danych|osobist\w*|mienia|obiektów|osób|zabytk\w*|przeciwpożar\w*|gatunk\w*|zieleni)'
+weight = 2.0
+reason = "інший тип «ochrona»"
+[[classify.negative]]
+pattern = 'odzież\w*\s+ochronn\w*|środk\w*\s+ochron\w*|rękawic\w*|maseczk\w*|hełm\w*|kamizelk\w*|ubrani\w*\s+ochronn\w*|okular\w*'
+weight = 3.0
+reason = "засоби індивідуального захисту"
+[[classify.negative]]
+pattern = 'bariery?\s+ochronn\w*|osłon\w*\s+ochronn\w*|pas\s+ochronn\w*|strefa\s+ochronn\w*'
+weight = 2.5
+reason = "дорожні/природні бар'єри"
+[[classify.negative]]
+pattern = 'opakowani\w*\s+ochronn\w*|folia\s+ochronn\w*|powłok\w*\s+ochronn\w*|pokrycie\s+ochronn\w*'
+weight = 2.5
+reason = "захисні покриття/упаковка"
+[[classify.negative]]
+pattern = '\bochron[aęy]\s+(?:fizycz\w*|osób\s+i\s+mienia|obiekt)'
+weight = 2.0
+reason = "охорона об'єктів"
+
+[canaries]
+# Тендери, які система ЗОБОВ'ЯЗАНА знайти (перевіряється у `doctor`/`recall`). Заповнюйте реальними tenderId/bzpNumber.
+ids = [
+  # "ocds-148610-c79171aa-8168-49ea-b1ff-e39e0b2a8d23",   # Powiat Namysłowski, MDS
+]
+
+[notify]
+# скільки днів до дедлайну нагадувати
+reminder_days = [3, 1]
