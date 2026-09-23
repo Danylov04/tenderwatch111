@@ -71,10 +71,9 @@ def _dispatch(args, conn, settings, rules) -> int:
         mode = "backfill" if args.cmd == "backfill" else args.mode
         days = args.days if args.days is not None else (60 if mode == "backfill" else settings.lookback_days)
         reports = run_sources(conn, settings, rules, mode, days, sources=sources)
-        if mode == "backfill" or getattr(args, "quiet", False):   # історичне наповнення не має засипати Telegram
-            conn.execute("UPDATE events SET notified=2 WHERE notified=0")
+        quiet = mode == "backfill" or getattr(args, "quiet", False)   # історичне наповнення не має засипати Telegram
         sender = notify.Sender(settings)
-        hk = housekeeping(conn, settings, rules, sender)
+        hk = housekeeping(conn, settings, rules, sender, quiet=quiet)
         for rep in reports:
             print(rep.summary())
             for w in rep.warnings[:5]:

@@ -46,11 +46,11 @@ def run_sources(conn, settings: Settings, rules: Rules, mode: str, days: int, ht
     return reports
 
 
-def housekeeping(conn, settings: Settings, rules: Rules, sender: notify.Sender) -> dict:
+def housekeeping(conn, settings: Settings, rules: Rules, sender: notify.Sender, quiet: bool = False) -> dict:
     closed = pipeline.refresh_lifecycle(conn)
     reminders = pipeline.make_reminders(conn, rules)
-    flushed = notify.flush_events(conn, sender, settings)
-    alerts = notify.alert_health(conn, sender)
+    flushed = notify.flush_events(conn, sender, settings, quiet=quiet)
+    alerts = 0 if quiet else notify.alert_health(conn, sender)
     return {"closed": closed, "reminders": reminders, "notified": flushed, "alerts": alerts}
 
 

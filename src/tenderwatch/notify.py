@@ -104,8 +104,12 @@ def _card(t, kind: str, detail: dict, settings: Settings) -> str:
     return "\n".join(lines)
 
 
-def flush_events(conn, sender: Sender, settings: Settings) -> dict:
-    """Розсилає незіслані події. Якщо Telegram вимкнено — позначає їх «пропущеними» (2), щоб не завалити потім."""
+def flush_events(conn, sender: Sender, settings: Settings, quiet: bool = False) -> dict:
+    """Розсилає незіслані події. Якщо Telegram вимкнено — позначає їх «пропущеними» (2), щоб не завалити потім.
+
+    quiet=True (перше наповнення/backfill) позначає геть усе «пропущеним», НІЧОГО не надсилаючи — включно з
+    подіями-нагадуваннями, які могли з'явитись щойно під час цього ж запуску (у housekeeping, після make_reminders).
+    """
     rows = conn.execute(
         """SELECT e.pk AS epk, e.kind, e.detail, t.* FROM events e JOIN tenders t ON t.pk=e.tender_pk
            WHERE e.notified=0 ORDER BY e.pk"""
@@ -115,7 +119,7 @@ def flush_events(conn, sender: Sender, settings: Settings) -> dict:
     for r in rows:
         kind = r["kind"]
         # сповіщаємо лише про релевантні й не «пропущені»; review видно в дашборді та дайджесті
-        drop = kind not in IMMEDIATE or r["user_status"] == "skip" or r["relevance"] != "relevant"
+        drop = quiet or kind not in IMMEDIATE or r["user_status"] == "skip" or r["relevance"] != "relevant"
         if drop:
             conn.execute("UPDATE events SET notified=2 WHERE pk=?", (r["epk"],))
             skipped += 1

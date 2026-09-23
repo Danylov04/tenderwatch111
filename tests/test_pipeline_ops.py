@@ -159,6 +159,23 @@ def test_recall_estimator_and_canaries(conn, rules):
     assert [c["found"] for c in rep["canaries"]] == [True, False]
 
 
+def test_quiet_backfill_suppresses_reminders_and_health_alerts(conn, settings, rules):
+    """Регресія: --quiet мав ловити лише події, що існували ДО housekeeping. Нагадування (make_reminders)
+    і алерти про здоров'я джерел (alert_health) виникають/шлються ВСЕРЕДИНІ housekeeping — і раніше проривались
+    у Telegram навіть при --quiet (це сталось наживо на першому backfill: 17 нагадувань + 2 алерти пішли попри quiet)."""
+    n = ezam_notice(make_item("Budowa schronu", cpvCode="45216129-4 (Schrony)", submittingOffersDate=iso_days(2)), "t")
+    store.ingest(conn, n, classify(n, rules), persist_noise=True)
+    conn.execute("INSERT INTO runs(source,mode,started_at,finished_at,ok,fetched,error) VALUES"
+                 "('ted','search',?,?,0,0,'FilterIgnored')", (iso_days(0)[:19] + "Z",) * 2)
+    sent = []
+    sender = notify.Sender(settings, post=lambda url, payload: sent.append(payload) or True)
+    hk = daemon.housekeeping(conn, settings, rules, sender, quiet=True)
+    assert hk["reminders"] == 1                       # нагадування таки створене...
+    assert sent == []                                 # ...але нічого не надіслано
+    assert hk["notified"]["sent"] == 0 and hk["alerts"] == 0
+    assert conn.execute("SELECT COUNT(*) c FROM events WHERE notified=0").fetchone()["c"] == 0
+
+
 def test_daemon_tick_schedule(conn, settings, rules):
     rules = small(rules)
     settings.enabled_sources = ["ezam"]
