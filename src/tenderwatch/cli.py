@@ -65,6 +65,13 @@ def main(argv: list[str] | None = None) -> int:
         conn.close()
 
 
+# Джерела, чий збій справді має валити GitHub Actions run (червоний статус, exit code 2).
+# ted/pz/bk — best-effort: їхній стан і так видно в `tenderwatch status` та через алерти здоров'я
+# (notify.alert_health читає таблицю runs незалежно від exit code), тож один тимчасовий збій
+# TED/bazakonkurencyjnosci не повинен ховати те, що основне джерело (ezam) відпрацювало нормально.
+CRITICAL_SOURCES = {"ezam"}
+
+
 def _dispatch(args, conn, settings, rules) -> int:
     if args.cmd in ("run", "backfill"):
         sources = [x for x in (args.sources or "").split(",") if x] or None
@@ -79,7 +86,8 @@ def _dispatch(args, conn, settings, rules) -> int:
             for w in rep.warnings[:5]:
                 print("  !", w)
         print("housekeeping:", json.dumps(hk, ensure_ascii=False))
-        return 0 if all(x.ok for x in reports) else 2
+        critical_failed = any(not r.ok for r in reports if r.source in CRITICAL_SOURCES)
+        return 2 if critical_failed else 0
 
     if args.cmd == "doctor":
         http = make_http(settings)
