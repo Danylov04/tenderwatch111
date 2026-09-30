@@ -131,10 +131,18 @@ def flush_events(conn, sender: Sender, settings: Settings, quiet: bool = False) 
         return {"sent": 0, "skipped": skipped + len(blocks), "enabled": False}
     if len(blocks) > MAX_CARDS:
         # масові події (перший запуск, відновлення після простою): один стислий підсумок замість десятків повідомлень
-        titles = [ln for _, b in blocks for ln in b.splitlines()[1:2]]
-        text = (f"<b>Багато подій одночасно: {len(blocks)}</b>\nДеталі — у дашборді"
-                + (f" ({html.escape(settings.public_url)})" if settings.public_url else "") + ".\n\n" + "\n".join(titles[:MAX_CARDS]))
-        if sender.send(text[:MAX_LEN]):
+        header = (f"<b>Багато подій одночасно: {len(blocks)}</b>\nДеталі — у дашборді"
+                  + (f" ({html.escape(settings.public_url)})" if settings.public_url else "") + ".\n\n")
+        titles = [ln for _, b in blocks for ln in b.splitlines()[1:2]][:MAX_CARDS]
+        # Кожен рядок titles — цілий HTML-фрагмент (напр. <a href="...">назва</a>). Додаємо лише ЦІЛІ рядки
+        # й ніколи не ріжемо підсумковий текст по довжині (text[:MAX_LEN]) — зріз посеред тега ламає
+        # парсер Telegram ("can't find end tag corresponding to start tag a").
+        text = header
+        for t_line in titles:
+            if len(text) + len(t_line) + 1 > MAX_LEN:
+                break
+            text += t_line + "\n"
+        if sender.send(text.rstrip()):
             conn.executemany("UPDATE events SET notified=1 WHERE pk=?", [(p,) for p, _ in blocks])
             sent += len(blocks)
         return {"sent": sent, "skipped": skipped, "enabled": True, "summarized": True}

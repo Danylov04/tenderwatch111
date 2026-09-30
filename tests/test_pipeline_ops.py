@@ -279,6 +279,29 @@ def test_mass_events_are_summarized_not_spammed(conn, settings, rules):
     assert conn.execute("SELECT COUNT(*) c FROM events WHERE notified=0").fetchone()["c"] == 0
 
 
+def test_mass_events_summary_never_cuts_an_html_tag_in_half(conn, settings, rules):
+    """Регрес: раніше підсумкове повідомлення різалось як text[:MAX_LEN], що могло розрізати
+    <a href="...">...</a> посеред тега і валило sendMessage у Telegram (400: can't find end tag
+    corresponding to start tag "a"). Тут довгі назви гарантовано переповнюють MAX_LEN (3900), тож
+    старий код обов'язково різав би текст посередині якогось <a>."""
+    long_title = "Budowa i przebudowa schronu oraz ukrycia dla ludności cywilnej w kompleksie szkolno-przedszkolnym " * 2
+    for i in range(40):
+        n = ezam_notice(
+            make_item(f"{long_title} nr {i}", organizationName=f"Bardzo Długa Nazwa Gminy Testowej Numer {i}",
+                      cpvCode="45216129-4 (Schrony)"),
+            "t",
+        )
+        store.ingest(conn, n, classify(n, rules), persist_noise=True)
+    sent = []
+    sender = notify.Sender(settings, post=lambda url, payload: sent.append(payload) or True)
+    out = notify.flush_events(conn, sender, settings)
+    assert out.get("summarized") and len(sent) == 1 and out["sent"] == 40
+    text = sent[0]["text"]
+    assert len(text) <= notify.MAX_LEN
+    assert text.count("<a href=") == text.count("</a>")          # жоден тег не розрізаний навпіл
+    assert conn.execute("SELECT COUNT(*) c FROM events WHERE notified=0").fetchone()["c"] == 0
+
+
 def test_review_tenders_do_not_trigger_immediate_messages(conn, settings, rules):
     base = make_item("Remont magazynu obrony cywilnej", cpvCode="45000000-7 (Roboty budowlane)", publicationDate=iso_days(-3))
     n = ezam_notice(base, "t")
