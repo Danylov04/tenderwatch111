@@ -1,0 +1,70 @@
+name: dashboard
+
+# Збирає статичну сторінку дашборду (tenderwatch dashboard) і публікує її через GitHub Pages.
+# Публічна сторінка за посиланням, без пароля — свідомий вибір (простіше за VPS/Docker з авторизацією).
+# Запускається після кожного успішного search/sweep (щоб дані на сторінці не відставали), і вручну.
+
+on:
+  workflow_run:
+    workflows: ["search", "sweep"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      relevance:
+        description: "Які категорії показувати (через кому)"
+        default: "relevant,review"
+
+concurrency:
+  group: tenderwatch-state
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    # для workflow_run — публікуємо лише якщо джерело завершилось успішно (не тягнемо застарілі/биті дані)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DB_PATH: data/tenderwatch.sqlite3
+      RULES_PATH: rules.toml
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install .
+
+      - name: Відновити базу
+        run: |
+          mkdir -p data
+          gh release download state -p 'tenderwatch.sqlite3' -D data --clobber \
+            || echo "збереженого стану ще нема"
+
+      - name: Зібрати дашборд
+        run: |
+          REL="${{ github.event.inputs.relevance || 'relevant,review' }}"
+          tenderwatch dashboard --out docs/index.html --relevance "$REL"
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

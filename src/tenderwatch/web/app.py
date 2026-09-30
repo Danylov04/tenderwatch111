@@ -18,7 +18,6 @@ from ..db import connect, jload
 from ..health import source_health
 
 STATIC = Path(__file__).parent / "static"
-JSON_COLS = ("tags", "reasons", "cpv_all", "sources", "contractors", "links")
 SORTS = {
     "deadline": "(deadline IS NULL), deadline ASC",
     "published": "published_at DESC",
@@ -31,13 +30,6 @@ SORTS = {
 class StatusBody(BaseModel):
     status: str
     note: str | None = None
-
-
-def _row(r: sqlite3.Row) -> dict:
-    d = dict(r)
-    for c in JSON_COLS:
-        d[c] = jload(d.get(c), {} if c == "links" else [])
-    return d
 
 
 def create_app(settings: Settings, rules: Rules) -> FastAPI:
@@ -105,14 +97,14 @@ def create_app(settings: Settings, rules: Rules) -> FastAPI:
         order = SORTS.get(sort, SORTS["deadline"])
         total = conn.execute(f"SELECT COUNT(*) c FROM tenders {clause}", args).fetchone()["c"]
         rows = conn.execute(f"SELECT * FROM tenders {clause} ORDER BY {order} LIMIT ? OFFSET ?", [*args, limit, offset]).fetchall()
-        return {"total": total, "items": [_row(r) for r in rows]}
+        return {"total": total, "items": [store.row_dict(r) for r in rows]}
 
     @app.get("/api/tenders/{pk}", dependencies=[Depends(auth)])
     def tender(pk: int, conn: sqlite3.Connection = Depends(db)) -> dict:
         r = conn.execute("SELECT * FROM tenders WHERE pk=?", (pk,)).fetchone()
         if not r:
             raise HTTPException(404, "Тендер не знайдено")
-        d = _row(r)
+        d = store.row_dict(r)
         d["notices"] = [dict(x) for x in conn.execute("SELECT * FROM notices WHERE tender_pk=? ORDER BY published_at", (pk,))]
         d["events"] = [
             {**dict(x), "detail": jload(x["detail"], {})}

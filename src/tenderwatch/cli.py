@@ -47,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("serve", help="веб-дашборд")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
+    dash = sub.add_parser("dashboard", help="зібрати статичну сторінку дашборду (для GitHub Pages)")
+    dash.add_argument("--out", default="docs/index.html", help="куди записати HTML")
+    dash.add_argument("--relevance", default="relevant,review")
 
     args = p.parse_args(argv)
     _setup_logging(args.verbose)
@@ -153,6 +156,14 @@ def _dispatch(args, conn, settings, rules) -> int:
         from .web.app import create_app
 
         uvicorn.run(create_app(settings, rules), host=args.host, port=args.port, log_level="info")
+        return 0
+
+    if args.cmd == "dashboard":
+        from .web.staticsite import build as build_dashboard
+
+        rel = tuple(x for x in args.relevance.split(",") if x)
+        out = build_dashboard(conn, rules, args.out, relevance=rel)
+        print(f"дашборд зібрано: {out}")
         return 0
     return 1
 

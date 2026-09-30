@@ -16,6 +16,17 @@ from .util import norm_buyer, norm_title, now_iso
 SOURCE_RANK = {"ezam": 0, "pz": 1, "bk": 2, "ted": 3}
 RAW_CAP = 30_000
 
+# Колонки tenders, що зберігаються як JSON-текст — і живий API (web/app.py), і статичний
+# генератор дашборду (web/staticsite.py) розпаковують їх однаково, звідси спільний хелпер.
+JSON_COLS = ("tags", "reasons", "cpv_all", "sources", "contractors", "links")
+
+
+def row_dict(r: sqlite3.Row) -> dict:
+    d = dict(r)
+    for c in JSON_COLS:
+        d[c] = jload(d.get(c), {} if c == "links" else [])
+    return d
+
 
 @contextmanager
 def tx(conn: sqlite3.Connection):
