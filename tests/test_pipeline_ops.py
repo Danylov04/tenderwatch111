@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from tenderwatch import daemon, notify, pipeline, recall, store
 from tenderwatch.classify import classify
 from tenderwatch.daemon import run_sources
-from tenderwatch.db import connect, kv_get
+from tenderwatch.db import connect, kv_get, kv_set
 from tenderwatch.health import source_health
 from tenderwatch.sources import EzamSource
 from tenderwatch.sources.ezam import to_notice as ezam_notice
@@ -88,6 +88,31 @@ def test_filter_ignored_run_ingests_nothing_and_alerts(conn, settings, rules):
     assert notify.alert_health(conn, sender) == 1
     assert "FAIL" in sent[0]["text"]
     assert notify.alert_health(conn, sender) == 0                # cooldown
+
+
+def test_alert_health_backs_off_the_longer_a_source_stays_broken(conn, settings):
+    """Регресія: без відкату давно зламане джерело пінгувало б Telegram кожні cooldown_hours нескінченно."""
+    old = (datetime.now(UTC) - timedelta(hours=100)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn.execute("INSERT INTO runs(source,mode,started_at,finished_at,ok,error,fetched) VALUES('ted','search',?,?,0,'boom',0)", (old, old))
+    sent = []
+    sender = notify.Sender(settings, post=lambda url, payload: sent.append(payload) or True)
+
+    assert notify.alert_health(conn, sender, cooldown_hours=6, max_cooldown_hours=48) == 1   # 1-й алерт: одразу
+    # 13г тому — з count=1 наступний поріг 6*2=12г, 13г > 12г -> має спрацювати знову
+    kv_set(conn, "alert:ted:search", (datetime.now(UTC) - timedelta(hours=13)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    assert notify.alert_health(conn, sender, cooldown_hours=6, max_cooldown_hours=48) == 1   # 2-й алерт
+    # тепер count=2, поріг 6*4=24г; 20г тому — ще зарано
+    kv_set(conn, "alert:ted:search", (datetime.now(UTC) - timedelta(hours=20)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    assert notify.alert_health(conn, sender, cooldown_hours=6, max_cooldown_hours=48) == 0
+    # а 25г тому — вже пора (25г > 24г)
+    kv_set(conn, "alert:ted:search", (datetime.now(UTC) - timedelta(hours=25)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    assert notify.alert_health(conn, sender, cooldown_hours=6, max_cooldown_hours=48) == 1   # 3-й алерт (count=3)
+
+    # джерело одужало — успішний запуск скидає лічильник відкату
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn.execute("INSERT INTO runs(source,mode,started_at,finished_at,ok,fetched) VALUES('ted','search',?,?,1,5)", (now, now))
+    assert notify.alert_health(conn, sender, cooldown_hours=6, max_cooldown_hours=48) == 0   # здорове — алерту нема
+    assert kv_get(conn, "alert_count:ted:search") == "0"
 
 
 def test_silent_zero_is_flagged(conn):

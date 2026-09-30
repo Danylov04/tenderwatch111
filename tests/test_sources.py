@@ -131,8 +131,14 @@ def test_ted_search_parses_and_paginates(rules):
     assert cn.buyer.startswith("Samodzielny Publiczny Zakład Opieki Zdrowotnej")
     assert cn.keys == ["ted:557381-2026"] and cn.lifecycle == "closed" and can.lifecycle == "awarded"
     assert cn.cpv.count("45216129") == 1
-    assert "buyer-country=POL" in calls[0]["query"] and "classification-cpv=45216129" in calls[0]["query"]
-    assert calls[0]["query"].count("publication-date>=") == 1
+    query = calls[0]["query"]
+    assert "buyer-country=POL" in query
+    assert query.count("publication-date>=") == 1
+    # Регресія 2026-09-24: `classification-cpv=A OR classification-cpv=B OR ...` у дужках на практиці
+    # валив check_filter (TED, схоже, неправильно парсить дужки/OR і фільтр фактично ігнорується).
+    # Має бути `classification-cpv IN (A B C ...)`, а не ланцюжок OR.
+    assert "classification-cpv IN (45216129" in query
+    assert " OR " not in query
 
 
 def test_ted_rejects_unfiltered_garbage(rules):

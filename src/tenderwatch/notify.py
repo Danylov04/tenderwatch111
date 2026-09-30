@@ -158,22 +158,35 @@ def _pack(blocks: list[tuple[int, str]]):
         yield cur_pks, cur
 
 
-def alert_health(conn, sender: Sender, cooldown_hours: int = 6) -> int:
-    """Збої джерел — не частіше ніж раз на cooldown для кожного джерела/режиму."""
+def alert_health(conn, sender: Sender, cooldown_hours: int = 6, max_cooldown_hours: int = 48) -> int:
+    """Збої джерел — з експоненційним відкатом інтервалу нагадувань.
+
+    Перший алерт про нову проблему йде за cooldown_hours. Кожен наступний алерт про ТУ Ж САМУ, ще не
+    вирішену проблему — вдвічі рідше, аж до стелі max_cooldown_hours. Без цього давно відоме й ще не
+    полагоджене джерело (наприклад зовнішній API, що ліг на кілька днів) пінгує Telegram щогодини/щодня
+    нескінченно одним і тим самим повідомленням. Коли джерело одужує (status="ok") — лічильник
+    скидається, і наступний збій знову почне з cooldown_hours.
+    """
     n = 0
     for h in source_health(conn):
+        count_key = f"alert_count:{h['source']}:{h['mode']}"
         if h["status"] == "ok":
+            if kv_get(conn, count_key, "0") != "0":
+                kv_set(conn, count_key, "0")
             continue
         key = f"alert:{h['source']}:{h['mode']}"
         last = kv_get(conn, key)
         lp = parse_dt(last)
-        if lp and utcnow() - lp < timedelta(hours=cooldown_hours):
+        count = int(kv_get(conn, count_key, "0") or "0")
+        effective_cooldown = min(cooldown_hours * (2 ** count), max_cooldown_hours)
+        if lp and utcnow() - lp < timedelta(hours=effective_cooldown):
             continue
         text = f"<b>ДЖЕРЕЛО {html.escape(h['source'])}/{h['mode']}: {h['status'].upper()}</b>\n" + "\n".join(
             html.escape(p) for p in h["problems"]
         )
         if sender.send(text):
             kv_set(conn, key, utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
+            kv_set(conn, count_key, str(count + 1))
             n += 1
     return n
 

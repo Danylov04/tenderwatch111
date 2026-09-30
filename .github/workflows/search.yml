@@ -51,10 +51,14 @@ jobs:
       - name: search
         run: |
           DAYS="${{ github.event.inputs.days || '3' }}"
+          # bk (bazakonkurencyjnosci) тимчасово вимкнено: з 2026-09-23 портал переїхав на новий домен
+          # (funduszeeuropejskie.gov.pl), і /api/announcements/search там стабільно віддає 500 —
+          # перевірено незалежно поза цим CI. Джерело й так історично давало ~0 релевантних записів.
+          # Поверніть --sources "ezam,ted,pz,bk" (або просто приберіть --sources), коли API оживе.
           if [ "${{ github.event.inputs.quiet }}" = "true" ]; then
-            tenderwatch run --mode search --days "$DAYS" --quiet
+            tenderwatch run --mode search --days "$DAYS" --sources "ezam,ted,pz" --quiet
           else
-            tenderwatch run --mode search --days "$DAYS"
+            tenderwatch run --mode search --days "$DAYS" --sources "ezam,ted,pz"
           fi
 
       - name: Зберегти базу для наступного запуску

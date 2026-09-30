@@ -92,8 +92,14 @@ class TedSource(Source):
     name = "ted"
 
     def _query(self, window: Window) -> str:
-        cpvs = " OR ".join(f"classification-cpv={c}" for c in self.rules.cpv_codes)
-        return f"buyer-country=POL AND ({cpvs}) AND publication-date>={window.start.strftime('%Y%m%d')}"
+        # ВАЖЛИВО: список кодів пишемо через `classification-cpv IN (A B C ...)`, а НЕ через
+        # ланцюжок `classification-cpv=A OR classification-cpv=B OR ...` у дужках. Останнє на практиці
+        # (2026-09-23..24, багато годинних прогонів поспіль) валило guard check_filter — 4/5..19/35 записів
+        # не мали жодного з очікуваних CPV, що вказує на неправильний парсинг дужок/OR у TED expert-query
+        # (найімовірніше: AND зв'язується лише з першим OR-членом, і CPV-фільтр фактично ігнорується).
+        # `IN (...)` — задокументований робочий синтаксис для списку значень одного поля.
+        cpvs = " ".join(self.rules.cpv_codes)
+        return f"buyer-country=POL AND classification-cpv IN ({cpvs}) AND publication-date>={window.start.strftime('%Y%m%d')}"
 
     def search(self, window: Window) -> Iterator[Notice]:
         query = self._query(window)
