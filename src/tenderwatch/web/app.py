@@ -12,7 +12,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 
 from .. import recall as recall_mod
-from .. import store
+from .. import store, translate
 from ..config import Rules, Settings
 from ..db import connect, jload
 from ..health import source_health
@@ -105,6 +105,7 @@ def create_app(settings: Settings, rules: Rules) -> FastAPI:
         if not r:
             raise HTTPException(404, "Тендер не знайдено")
         d = store.row_dict(r)
+        d["description_uk"] = translate.lookup(conn, d.get("description") or "")
         d["notices"] = [dict(x) for x in conn.execute("SELECT * FROM notices WHERE tender_pk=? ORDER BY published_at", (pk,))]
         d["events"] = [
             {**dict(x), "detail": jload(x["detail"], {})}

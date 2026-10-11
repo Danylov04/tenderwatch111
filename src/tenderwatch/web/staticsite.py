@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .. import recall as recall_mod
-from .. import store
+from .. import store, translate
 from ..config import Rules
 from ..db import jload
 from ..health import source_health
@@ -58,6 +58,7 @@ def collect(conn: sqlite3.Connection, rules: Rules | None, relevance: tuple[str,
     for r in rows:
         d = store.row_dict(r)
         d.pop("user_note", None)
+        d["description_uk"] = translate.lookup(conn, d.get("description") or "")
         d.update(_detail(conn, d["pk"]))
         items.append(d)
     counts = [dict(r) for r in conn.execute(

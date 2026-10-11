@@ -1,4 +1,4 @@
-"""CLI: tenderwatch run | backfill | doctor | recall | digest | status | export | daemon | serve"""
+"""CLI: tenderwatch run | backfill | doctor | recall | digest | status | export | daemon | serve | dashboard | translate"""
 from __future__ import annotations
 
 import argparse
@@ -50,6 +50,9 @@ def main(argv: list[str] | None = None) -> int:
     dash = sub.add_parser("dashboard", help="зібрати статичну сторінку дашборду (для GitHub Pages)")
     dash.add_argument("--out", default="docs/index.html", help="куди записати HTML")
     dash.add_argument("--relevance", default="relevant,review")
+    tr = sub.add_parser("translate", help="перекласти описи тендерів українською (для дашборду)")
+    tr.add_argument("--budget", type=int, default=40000, help="максимум символів за запуск")
+    tr.add_argument("--relevance", default="relevant,review")
 
     args = p.parse_args(argv)
     _setup_logging(args.verbose)
@@ -165,6 +168,18 @@ def _dispatch(args, conn, settings, rules) -> int:
         out = build_dashboard(conn, rules, args.out, relevance=rel)
         print(f"дашборд зібрано: {out}")
         return 0
+
+    if args.cmd == "translate":
+        from . import translate
+
+        http = make_http(settings)
+        try:
+            rel = tuple(x for x in args.relevance.split(",") if x)
+            rep = translate.translate_pending(conn, translate.make_translator(http), budget=args.budget, relevance=rel)
+        finally:
+            http.close()
+        print("translate:", json.dumps(rep, ensure_ascii=False))
+        return 0  # переклад — косметика: його збій не повинен валити пошук тендерів
     return 1
 
 

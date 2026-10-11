@@ -61,6 +61,15 @@ jobs:
             tenderwatch run --mode search --days "$DAYS" --sources "ezam,ted,pz"
           fi
 
+      - name: Перекласти описи українською (для дашборду)
+        # Переклад кешується в базі, тому робиться тут (search зберігає базу), а не в dashboard.
+        # Без ключа — безкоштовний Google Translate; для кращої якості додайте секрет DEEPL_API_KEY (DeepL API Free).
+        # Збій перекладу не валить пошук: решту доперекладе наступний запуск.
+        continue-on-error: true
+        env:
+          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
+        run: tenderwatch translate --budget 40000
+
       - name: Зберегти базу для наступного запуску
         if: always()
         run: |

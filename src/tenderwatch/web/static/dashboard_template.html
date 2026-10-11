@@ -39,6 +39,7 @@ main{padding:8px 16px 40px;display:grid;gap:10px}
 .dl b{display:block;font-size:20px}
 .dl.soon{background:var(--soft-warn)}.dl.urgent{background:var(--soft-bad)}.dl.ok{background:var(--soft-ok)}
 .title{font-weight:600;cursor:pointer}
+.orig{margin-top:6px}.orig summary{cursor:pointer;opacity:.7;font-size:.9em}
 .meta{color:var(--muted);font-size:13px;margin-top:3px}
 .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .chip{background:var(--chip);border-radius:6px;padding:1px 7px;font-size:12px}
@@ -152,7 +153,7 @@ function filtered(){
     if(province && t.province!==province) return false;
     if(category && t.category!==category) return false;
     if(q){
-      const hay=(t.title+' '+t.buyer+' '+(t.reference||'')+' '+(t.description||'')).toLowerCase();
+      const hay=(t.title+' '+t.buyer+' '+(t.reference||'')+' '+(t.description||'')+' '+(t.description_uk||'')).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -206,7 +207,9 @@ function openTender(pk){
      ${t.reference?`<span class="chip">${esc(t.reference)}</span>`:''}${t.contact_email?`<span class="chip">${esc(t.contact_email)}</span>`:''}</div>
    <h3>Дедлайн</h3><div>${fmtDT(t.deadline)} (Варшава) · джерело дедлайну: ${esc(t.deadline_src||'—')}</div>
    <h3>Чому такий вердикт</h3><div>${(t.reasons||[]).map(r=>`<div class="mono">${esc(r)}</div>`).join('')||'—'}</div>
-   ${t.description?`<h3>Предмет замовлення</h3><div>${esc(t.description)}</div>`:''}
+   ${t.description?`<h3>Предмет замовлення</h3>${t.description_uk?`<div>${esc(t.description_uk)}</div>
+     <details class="orig"><summary>Оригінал польською</summary><div>${esc(t.description)}</div></details>`
+     :`<div>${esc(t.description)}</div><div class="meta">переклад ще готується — з'явиться після найближчого запуску пошуку</div>`}`:''}
    <h3>CPV</h3><div class="mono">${esc((t.cpv_all||[]).join(', ')||'—')}</div>
    ${ct?`<h3>Виконавці (результат)</h3><table>${ct}</table>`:''}
    <h3>Оголошення (версії процедури)</h3><table>${nt||'<tr><td>—</td></tr>'}</table>
