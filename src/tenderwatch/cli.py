@@ -172,7 +172,9 @@ def _dispatch(args, conn, settings, rules) -> int:
     if args.cmd == "translate":
         from . import translate
 
-        http = make_http(settings)
+        # max_tries=2: перекладач без ключа (Google) часто відповідає 429 на IP GitHub Actions —
+        # не витрачаємо хвилину на ретраї щогодини, просто спробуємо в наступному запуску.
+        http = make_http(settings, max_tries=2)
         try:
             rel = tuple(x for x in args.relevance.split(",") if x)
             rep = translate.translate_pending(conn, translate.make_translator(http), budget=args.budget, relevance=rel)
