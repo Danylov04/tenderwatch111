@@ -178,6 +178,10 @@ def _dispatch(args, conn, settings, rules) -> int:
             rep = translate.translate_pending(conn, translate.make_translator(http), budget=args.budget, relevance=rel)
         finally:
             http.close()
+        from .db import kv_set
+        from .util import now_iso
+
+        kv_set(conn, "translate_last", json.dumps({**rep, "at": now_iso()}, ensure_ascii=False))  # видно в базі без логів CI
         print("translate:", json.dumps(rep, ensure_ascii=False))
         return 0  # переклад — косметика: його збій не повинен валити пошук тендерів
     return 1
