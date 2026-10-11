@@ -55,6 +55,8 @@ def test_noise_is_filtered(rules):
         "Budowa wiaty przystankowej",
         "Ochrona środowiska - program edukacyjny",
         "Szkoła modułowa – oddział zespołu",
+        "Przebudowa ulicy w Brzozowie",
+        "Dostawa ozonatora do stacji uzdatniania wody w Ozorkowie",
     ]:
         assert classify(n(t), rules).relevance == "noise", t
 
@@ -65,6 +67,8 @@ def test_positive_titles(rules):
         ("Przygotowanie miejsca doraźnego schronienia w Prusicach", "relevant"),
         ("Budowa schronu w budynku szkoły", "relevant"),
         ("Rozwój infrastruktury podwójnego przeznaczenia, obiekty sportowe i obrona cywilna", "relevant"),
+        ("Budowa obiektu zbiorowej ochrony przy Szkole Podstawowej nr 2", "relevant"),
+        ("Dokumentacja projektowa OZO w budynku urzędu gminy", "relevant"),
     ]:
         assert classify(n(t), rules).relevance == rel, t
 

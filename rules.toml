@@ -17,9 +17,13 @@ title_keywords = [
   "ochrony ludności", "ochrona ludności", "budowli ochronnej", "budowla ochronna",
   "ochronn", "modułow", "podwójnej funkcji", "podwójnego przeznaczenia", "dual-use",
   "fortyfikacj", "bunkier", "bunkr",
+  # Програма OLiOC 2027–2031 (ухвалена урядом 2026-10-06, 102,4 млрд зл) будує «obiekty zbiorowej ochrony» (OZO):
+  # з кінця 2026 тендери все частіше називатимуть саме так, а не «schron». «OZO» як підрядок дуже шумне
+  # (Brzozów, Ozorków, ozon…) — шум відсікає класифікатор: позитивне правило лише на окреме слово «OZO» великими.
+  "zbiorowej ochrony", "OZO",
 ]
 # Ключові слова для platformazakupowa.pl (там повнотекстовий пошук, тому менше форм)
-pz_keywords = ["schron", "ukryci", "MDS", "ochronn", "ochrony ludności", "modułow", "podwójnej funkcji", "podwójnego przeznaczenia", "fortyfikacj", "bunkier"]
+pz_keywords = ["schron", "ukryci", "MDS", "ochronn", "ochrony ludności", "modułow", "podwójnej funkcji", "podwójnego przeznaczenia", "fortyfikacj", "bunkier", "zbiorowej ochrony", "OZO"]
 # CPV-коди для точного CPV-пошуку (e-Zamówienia Board/Search?CpvCode=..., TED classification-cpv=...)
 cpv_codes = ["45216129", "45216230", "45216220", "45216250", "45216000", "45216100", "45216200", "45215200"]
 
@@ -49,6 +53,15 @@ tag = "shelter"
 [[classify.positive]]
 pattern = 'budowl\w*\s+ochronn\w*|obiekt\w*\s+ochronn\w*|budowli\s+ochronnych'
 weight = 4.0
+tag = "shelter"
+[[classify.positive]]
+pattern = 'obiekt\w*\s+zbiorowej\s+ochrony|zbiorowej\s+ochrony'
+weight = 4.0
+tag = "shelter"
+[[classify.positive]]
+# лише окреме слово великими літерами: (?-i:...) вимикає ігнорування регістру, щоб не ловити «ozon», «Brzozów»
+pattern = '(?-i:\bOZO\b)'
+weight = 3.5
 tag = "shelter"
 [[classify.positive]]
 pattern = 'podwójn\w*\s+(?:funkcj\w*|przeznaczeni\w*)|dual[\s-]?use'
