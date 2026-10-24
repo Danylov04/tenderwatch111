@@ -9,6 +9,9 @@
 Невідомі параметри сервер МОВЧКИ ІГНОРУЄ (наприклад TenderId) — тому кожна відповідь проходить `check_filter`.
 Деталі: `GetNoticeHtmlBodyById?noticeId=<objectId>` (саме objectId, не noticeNumber).
 Відповідь Search — голий JSON-масив.
+
+З жовтня 2026: будь-який параметризований запит до Board/Search без заголовків Referer/Origin/Accept
+"як у браузера" повертає 403 (WAF). Усі запити тут ідуть із `_BOARD_HEADERS` — дивіться коментар біля неї.
 """
 from __future__ import annotations
 
@@ -29,6 +32,20 @@ BASE = "https://ezamowienia.gov.pl/mo-board/api/v1/Board/"
 PAGE = 10
 MAX_PAGES = 300          # запобіжник для пошуку (слова/CPV)
 MAX_PAGES_SWEEP = 3000   # sweep усіх оголошень за вікно дат
+
+# З ~початку жовтня 2026 ezamowienia.gov.pl почав віддавати HTTP 403 на будь-який запит до
+# Board/Search з ДОДАТКОВИМ параметром (OrderObject/CpvCode/PublicationDateFrom-To/SortingColumnName) —
+# перевірено живими запитами: чистий `?PageSize=&PageNumber=` проходить, той самий запит з ОДНИМ
+# будь-яким фільтром падає. Голий Http-клієнт шле лише User-Agent/Accept-Language (жодного Referer/
+# Origin/Accept) — це класично ловиться новим WAF-правилом "параметризований запит без заголовків
+# як у браузера = бот". Тому на цей ендпоїнт додаємо заголовки, які шле реальна сторінка списку
+# тендерів (mp-client/search/list), коли фільтрує список. НЕ підтверджено наживо з цього середовища
+# (нема живого доступу до API поза офіційними інструментами) — перевірте наступним запуском search/sweep.
+_BOARD_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://ezamowienia.gov.pl/mp-client/search/list",
+    "Origin": "https://ezamowienia.gov.pl",
+}
 
 # TERYT × 2 -> воєводство (BZP кодує organizationProvince як PL + код TERYT)
 PROVINCES = {
@@ -127,7 +144,7 @@ class EzamSource(Source):
 
     # ---- низькорівневе ----
     def _page(self, params: dict) -> list[dict]:
-        data = self.http.get_json(BASE + "Search", params=params)
+        data = self.http.get_json(BASE + "Search", params=params, headers=_BOARD_HEADERS)
         self.stats.pages += 1
         if not isinstance(data, list):
             raise SourceError(f"очікувався JSON-масив, отримано {type(data).__name__}: схема змінилась?")
@@ -227,7 +244,9 @@ class EzamSource(Source):
     def enrich(self, n: Notice) -> Notice:
         object_id = n.source_id
         try:
-            resp = self.http.get(BASE + "GetNoticeHtmlBodyById", params={"noticeId": object_id}, ok=(200, 404))
+            resp = self.http.get(
+                BASE + "GetNoticeHtmlBodyById", params={"noticeId": object_id}, ok=(200, 404), headers=_BOARD_HEADERS
+            )
         except HttpError as e:
             log.warning("body fetch failed for %s: %s", object_id, e)
             self.stats.warnings.append(f"body:{object_id}:{e}")
