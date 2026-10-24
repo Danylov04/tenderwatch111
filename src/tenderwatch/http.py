@@ -12,6 +12,25 @@ log = logging.getLogger("tenderwatch.http")
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
+# Заголовки, які зазвичай видають вендора/механізм WAF-блокування (Cloudflare, Akamai, Imperva,
+# AWS WAF, rate-limit) або кукі-викличку — пишемо їх у лог при НЕ-ok відповіді, щоб за голим
+# "HTTP 403" у логах Actions було видно хоч якийсь слід, а не гадати навмання (як було з ezam).
+_DIAG_HEADER_KEYS = (
+    "server", "via", "x-cache", "cf-ray", "cf-mitigated", "x-amzn-requestid", "x-amz-cf-id",
+    "x-akamai-request-id", "x-waf-event-info", "x-sucuri-id", "retry-after", "content-type",
+    "x-request-id", "set-cookie",
+)
+
+
+def _diag(resp: httpx.Response) -> str:
+    """Короткий діагностичний знімок НЕ-ok відповіді: вибрані заголовки + початок тіла."""
+    try:
+        hdrs = {k: v for k, v in resp.headers.items() if k.lower() in _DIAG_HEADER_KEYS}
+        body = resp.text[:300].replace("\n", " ")
+    except Exception as e:  # noqa: BLE001 — діагностика сама не повинна валити запит
+        return f"(діагностика не знята: {e})"
+    return f"headers={hdrs!r} body[:300]={body!r}"
+
 
 class HttpError(Exception):
     def __init__(self, message: str, status: int | None = None, url: str = ""):
@@ -78,10 +97,13 @@ class Http:
                 ra = resp.headers.get("Retry-After")
                 if ra and ra.isdigit():
                     delay = min(int(ra), 120)
-                log.warning("HTTP %s on %s (try %d), sleeping %ss", resp.status_code, url, attempt, delay)
+                log.warning(
+                    "HTTP %s on %s (try %d), sleeping %ss — %s", resp.status_code, url, attempt, delay, _diag(resp)
+                )
                 last_exc = HttpError(f"HTTP {resp.status_code}", resp.status_code, url)
                 self._sleep(delay)
                 continue
+            log.warning("HTTP %s for %s — %s", resp.status_code, url, _diag(resp))
             raise HttpError(f"HTTP {resp.status_code} for {url}", resp.status_code, url)
         if isinstance(last_exc, HttpError):
             raise last_exc

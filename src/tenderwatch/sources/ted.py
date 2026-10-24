@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from datetime import timedelta
 
 from ..models import AWARDED, CLOSED, OPEN, PLANNED, UNKNOWN, Notice
 from ..util import clean, iso, parse_dt, utcnow
@@ -97,9 +98,22 @@ class TedSource(Source):
         # (2026-09-23..24, багато годинних прогонів поспіль) валило guard check_filter — 4/5..19/35 записів
         # не мали жодного з очікуваних CPV, що вказує на неправильний парсинг дужок/OR у TED expert-query
         # (найімовірніше: AND зв'язується лише з першим OR-членом, і CPV-фільтр фактично ігнорується).
-        # `IN (...)` — задокументований робочий синтаксис для списку значень одного поля.
+        # `IN (...)` — задокументований робочий синтаксис для списку значень одного поля (підтверджено
+        # зовнішнім джерелом: TED Expert Search, приклад `buyer-country IN (ROU DEU FRA)`, значення
+        # через пробіл, без коми).
+        #
+        # 2026-10-24: навіть з `IN (...)` check_filter далі падає (0/2 відповідних CPV) — запит доходить
+        # (200 OK), але фільтр схоже знову ІГНОРУЄТЬСЯ сервером. Це той самий клас бага, що й з OR-ланцюжком:
+        # TED expert-query, судячи з усього, чутливий до групування трьох AND-умов без явних дужок навколо
+        # КОЖНОЇ з них (не тільки навколо значень IN) — додаємо дужки на кожну умову. НЕ підтверджено
+        # наживо з цього середовища (TED API — POST з JSON body, WebFetch такого не вміє) — перевірте
+        # наступним логом search/sweep; якщо однакова помилка повториться — проблема не в групуванні,
+        # і варто спробувати `doctor()` з `checkQuerySyntax: true`, щоб TED сам сказав, що саме не так.
         cpvs = " ".join(self.rules.cpv_codes)
-        return f"buyer-country=POL AND classification-cpv IN ({cpvs}) AND publication-date>={window.start.strftime('%Y%m%d')}"
+        return (
+            f"(buyer-country=POL) AND (classification-cpv IN ({cpvs})) "
+            f"AND (publication-date>={window.start.strftime('%Y%m%d')})"
+        )
 
     def search(self, window: Window) -> Iterator[Notice]:
         query = self._query(window)
@@ -134,6 +148,7 @@ class TedSource(Source):
                 return
 
     def doctor(self) -> list[tuple[str, bool, str]]:
+        results: list[tuple[str, bool, str]] = []
         try:
             data = self.http.post_json(
                 API,
@@ -141,6 +156,35 @@ class TedSource(Source):
                  "scope": "ALL", "paginationMode": "PAGE_NUMBER"},
             )
             ok = isinstance(data, dict) and "notices" in data
-            return [("ted search v3", ok, f"totalNoticeCount={data.get('totalNoticeCount')}" if ok else "нема 'notices'")]
+            results.append(
+                ("ted search v3", ok, f"totalNoticeCount={data.get('totalNoticeCount')}" if ok else "нема 'notices'")
+            )
         except Exception as e:  # noqa: BLE001
-            return [("ted search v3", False, str(e))]
+            results.append(("ted search v3", False, str(e)))
+
+        # Окрема перевірка саме нашого продакшн-запиту (`_query()` з IN + дужками) — чи CPV-фільтр
+        # СПРАВДІ фільтрує, а не повертає 200 OK і мовчки ігнорує умову (саме так виглядав і старий
+        # OR-ланцюжковий баг, і — 2026-10-24 — цей самий `IN (...)` без дужок навколо кожної умови).
+        # Вікно 30 днів, щоб був шанс хоч на якийсь результат для перевірки.
+        try:
+            window = Window(start=utcnow() - timedelta(days=30), end=utcnow())
+            query = self._query(window)
+            data = self.http.post_json(
+                API,
+                {"query": query, "fields": FIELDS, "page": 1, "limit": 20, "scope": "ALL", "paginationMode": "PAGE_NUMBER"},
+            )
+            items = data.get("notices") or [] if isinstance(data, dict) else []
+            wanted = set(self.rules.cpv_codes)
+            matched = sum(
+                1 for it in items if wanted & {re.sub(r"\D", "", c)[:8] for c in (it.get("classification-cpv") or [])}
+            )
+            ok = bool(items) and matched == len(items)
+            detail = (
+                f"query={query!r}; {matched}/{len(items)} записів відповідають CPV-фільтру"
+                if items
+                else f"query={query!r}; 0 записів за 30 днів (замало даних для перевірки)"
+            )
+            results.append(("ted cpv-filter (продакшн-запит)", ok, detail))
+        except Exception as e:  # noqa: BLE001
+            results.append(("ted cpv-filter (продакшн-запит)", False, str(e)))
+        return results
