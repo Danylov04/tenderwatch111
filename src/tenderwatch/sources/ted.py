@@ -164,8 +164,10 @@ class TedSource(Source):
 
         # Окрема перевірка саме нашого продакшн-запиту (`_query()` з IN + дужками) — чи CPV-фільтр
         # СПРАВДІ фільтрує, а не повертає 200 OK і мовчки ігнорує умову (саме так виглядав і старий
-        # OR-ланцюжковий баг, і — 2026-10-24 — цей самий `IN (...)` без дужок навколо кожної умови).
-        # Вікно 30 днів, щоб був шанс хоч на якийсь результат для перевірки.
+        # OR-ланцюжковий баг, і — 2026-10-24 — цей самий `IN (...)` без дужок навколо кожної умови, і
+        # З ДУЖКАМИ — досі так само: 0/2 на прод-логу). При незбігу друкуємо СИРІ classification-cpv
+        # невідповідних записів — щоб видно було, чи фільтр взагалі щось робить, чи повертає геть
+        # випадкові CPV (отже сервер його просто не бачить/ігнорує).
         try:
             window = Window(start=utcnow() - timedelta(days=30), end=utcnow())
             query = self._query(window)
@@ -175,16 +177,32 @@ class TedSource(Source):
             )
             items = data.get("notices") or [] if isinstance(data, dict) else []
             wanted = set(self.rules.cpv_codes)
-            matched = sum(
-                1 for it in items if wanted & {re.sub(r"\D", "", c)[:8] for c in (it.get("classification-cpv") or [])}
-            )
-            ok = bool(items) and matched == len(items)
-            detail = (
-                f"query={query!r}; {matched}/{len(items)} записів відповідають CPV-фільтру"
-                if items
-                else f"query={query!r}; 0 записів за 30 днів (замало даних для перевірки)"
-            )
+            mismatched_cpv = [
+                it.get("classification-cpv") for it in items
+                if not (wanted & {re.sub(r"\D", "", c)[:8] for c in (it.get("classification-cpv") or [])})
+            ]
+            matched = len(items) - len(mismatched_cpv)
+            ok = bool(items) and not mismatched_cpv
+            if items:
+                detail = f"query={query!r}; {matched}/{len(items)} відповідають; CPV невідповідних (до 5): {mismatched_cpv[:5]!r}"
+            else:
+                detail = f"query={query!r}; 0 записів за 30 днів (замало даних для перевірки)"
             results.append(("ted cpv-filter (продакшн-запит)", ok, detail))
         except Exception as e:  # noqa: BLE001
             results.append(("ted cpv-filter (продакшн-запит)", False, str(e)))
+
+        # checkQuerySyntax: якщо TED API підтримує цей прапорець (зустрічається в описах стороннього
+        # використання v3 API), він має сказати, чи запит ВАЛІДНИЙ, без потреби вгадувати по поведінці.
+        # Якщо прапорець просто ігнорується серверу (що теж можливо) — цей рядок хоча б підтвердить, що
+        # відповідь на звичний запит і на запит з прапорцем ідентичні, і треба інший спосіб діагностики.
+        try:
+            query = self._query(Window(start=utcnow() - timedelta(days=30), end=utcnow()))
+            data = self.http.post_json(
+                API,
+                {"query": query, "fields": FIELDS, "page": 1, "limit": 1, "scope": "ALL",
+                 "paginationMode": "PAGE_NUMBER", "checkQuerySyntax": True},
+            )
+            results.append(("ted checkQuerySyntax", True, f"відповідь сервера: {data!r}"[:500]))
+        except Exception as e:  # noqa: BLE001
+            results.append(("ted checkQuerySyntax", False, str(e)))
         return results

@@ -32,11 +32,36 @@ def _diag(resp: httpx.Response) -> str:
     return f"headers={hdrs!r} body[:300]={body!r}"
 
 
+# 2026-10-24: саме завдяки _diag() з'ясувалось, що 403 на ezamowienia.gov.pl — НЕ бот-блок/WAF (як
+# передбачалось спочатку), а сторінка-заглушка власника сайту: `Server: Microsoft-Azure-Application-
+# Gateway/v2`, HTML з <title>e-Zamówienia - Przerwa techniczna</title> («технічна перерва»). Це тимчасове
+# і нічим не лікується з нашого боку (жодні заголовки не допоможуть) — тому таку відповідь трактуємо
+# окремо від «реальної» помилки: ретраїмо в межах прогону (може відновитись за хвилини), а якщо й після
+# цього сайт у перерві — кидаємо MaintenanceError, а не звичайну HttpError, щоб викликаючий код (cli.py)
+# міг не червонити CI через те, що не є нашим багом.
+_MAINTENANCE_MARKERS = ("przerwa techniczna",)
+
+
+def _is_maintenance_page(resp: httpx.Response) -> bool:
+    try:
+        if "html" not in resp.headers.get("content-type", "").lower():
+            return False
+        body = resp.text[:2000].lower()
+    except Exception:  # noqa: BLE001
+        return False
+    return any(marker in body for marker in _MAINTENANCE_MARKERS)
+
+
 class HttpError(Exception):
     def __init__(self, message: str, status: int | None = None, url: str = ""):
         super().__init__(message)
         self.status = status
         self.url = url
+
+
+class MaintenanceError(HttpError):
+    """Сайт сам каже, що тимчасово в технічній перерві (сторінка-заглушка власника) — не бот-блок і
+    не наш баг. Відокремлена від HttpError, щоб виклик-код міг не вважати це критичним збоєм."""
 
 
 class Http:
@@ -80,6 +105,7 @@ class Http:
     def request(self, method: str, url: str, *, ok: tuple[int, ...] = (200,), **kw) -> httpx.Response:
         host = urlparse(url).netloc
         last_exc: Exception | None = None
+        maintenance = False
         for attempt in range(1, self.max_tries + 1):
             self._throttle(host)
             self.requests += 1
@@ -92,19 +118,24 @@ class Http:
                 continue
             if resp.status_code in ok:
                 return resp
-            if resp.status_code in RETRY_STATUS:
+            page_maintenance = _is_maintenance_page(resp)
+            maintenance = maintenance or page_maintenance
+            if resp.status_code in RETRY_STATUS or page_maintenance:
                 delay = min(2 ** attempt, 60)
                 ra = resp.headers.get("Retry-After")
                 if ra and ra.isdigit():
                     delay = min(int(ra), 120)
                 log.warning(
-                    "HTTP %s on %s (try %d), sleeping %ss — %s", resp.status_code, url, attempt, delay, _diag(resp)
+                    "HTTP %s on %s (try %d), sleeping %ss — %s%s", resp.status_code, url, attempt, delay, _diag(resp),
+                    " [технічна перерва на сайті]" if page_maintenance else "",
                 )
                 last_exc = HttpError(f"HTTP {resp.status_code}", resp.status_code, url)
                 self._sleep(delay)
                 continue
             log.warning("HTTP %s for %s — %s", resp.status_code, url, _diag(resp))
             raise HttpError(f"HTTP {resp.status_code} for {url}", resp.status_code, url)
+        if maintenance:
+            raise MaintenanceError(f"сайт у технічній перерві: {url}", getattr(last_exc, "status", None), url)
         if isinstance(last_exc, HttpError):
             raise last_exc
         raise HttpError(f"giving up on {url}: {last_exc}", None, url)

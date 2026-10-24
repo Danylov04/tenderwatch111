@@ -77,6 +77,28 @@ def test_failing_source_is_isolated_and_recorded(conn, settings, rules):
     assert h[("ezam", "search")]["status"] == "fail"
 
 
+def test_maintenance_page_is_transient_not_critical_for_ci(conn, settings, rules):
+    """Регресія 2026-10-24: ezamowienia.gov.pl під час "технічної перерви" (сторінка-заглушка власника,
+    Azure Application Gateway) віддає 403 — це НЕ бот-блок і не наш баг, тому не повинно червонити CI
+    так само, як справжня помилка (напр. HTTP 500 вище) — лише бути видимим через transient-прапор."""
+    rules = small(rules)
+    maintenance_html = (
+        '<html><head><title>e-Zamówienia - Przerwa techniczna</title></head>'
+        '<body>Strona niedostępna z powodu prac serwisowych.</body></html>'
+    )
+    http = make_http(
+        ezam=FakeEzam(
+            dataset(), fail_status=403,
+            fail_headers={"Server": "Microsoft-Azure-Application-Gateway/v2", "content-type": "text/html"},
+            fail_body=maintenance_html,
+        )
+    )
+    r = run_sources(conn, settings, rules, "search", 3, http, sources=["ezam"])[0]
+    assert not r.ok
+    assert r.transient, "мало бути позначено як тимчасове (MaintenanceError), а не критична помилка"
+    assert "MaintenanceError" in r.error
+
+
 def test_filter_ignored_run_ingests_nothing_and_alerts(conn, settings, rules):
     rules = small(rules)
     junk = [make_item(f"Inny przetarg {i}") for i in range(10)]

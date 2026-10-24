@@ -9,6 +9,7 @@ from . import store
 from .classify import classify, needs_body_scan
 from .config import Rules, Settings
 from .db import add_event, jdump, jload
+from .http import MaintenanceError
 from .models import OPEN
 from .sources import Source, Window
 from .util import now_iso, utcnow
@@ -30,9 +31,18 @@ class RunReport:
     error: str = ""
     warnings: list[str] = field(default_factory=list)
     bodies: int = 0
+    # Збій, викликаний стороннім середовищем (напр. "технічна перерва" на сайті джерела), а не нашим
+    # кодом — не повинен червонити CI (див. cli.CRITICAL_SOURCES), хоч і лишається видимим як "не ok"
+    # для health-алертів.
+    transient: bool = False
 
     def summary(self) -> str:
-        state = "OK" if self.ok else f"ПОМИЛКА: {self.error}"
+        if self.ok:
+            state = "OK"
+        elif self.transient:
+            state = f"ТИМЧАСОВО (не критично для CI): {self.error}"
+        else:
+            state = f"ПОМИЛКА: {self.error}"
         return (f"{self.source}/{self.mode}: {state}; отримано {self.fetched}, релевантних {self.relevant}, "
                 f"нових тендерів {self.new_tenders}, тіл {self.bodies}")
 
@@ -98,6 +108,7 @@ def run_source(conn, src: Source, mode: str, window: Window, rules: Rules, setti
         rep.ok = True
     except Exception as e:  # noqa: BLE001 — будь-яка помилка джерела не повинна ламати інші джерела
         rep.ok = False
+        rep.transient = isinstance(e, MaintenanceError)
         rep.error = f"{type(e).__name__}: {e}"
         rep.fetched = src.stats.fetched
         log.exception("source %s failed", src.name)

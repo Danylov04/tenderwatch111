@@ -92,7 +92,9 @@ def _dispatch(args, conn, settings, rules) -> int:
             for w in rep.warnings[:5]:
                 print("  !", w)
         print("housekeeping:", json.dumps(hk, ensure_ascii=False))
-        critical_failed = any(not r.ok for r in reports if r.source in CRITICAL_SOURCES)
+        # transient (MaintenanceError — сайт сам каже, що в технічній перерві) НЕ червонить CI: це не
+        # наш баг і нічим з коду не лікується, самé собою нормалізується на одному з наступних прогонів.
+        critical_failed = any(not r.ok and not r.transient for r in reports if r.source in CRITICAL_SOURCES)
         return 2 if critical_failed else 0
 
     if args.cmd == "doctor":

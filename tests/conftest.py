@@ -87,17 +87,19 @@ class FakeEzam:
     ignore_filters=True відтворює реальну поведінку «невідомий параметр мовчки ігнорується».
     """
 
-    def __init__(self, items=None, bodies=None, ignore_filters=False, fail_status=None):
+    def __init__(self, items=None, bodies=None, ignore_filters=False, fail_status=None, fail_headers=None, fail_body="boom"):
         self.items = list(items or [])
         self.bodies = dict(bodies or {})
         self.ignore_filters = ignore_filters
         self.fail_status = fail_status
+        self.fail_headers = fail_headers
+        self.fail_body = fail_body
         self.calls: list[str] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.calls.append(str(request.url))
         if self.fail_status:
-            return httpx.Response(self.fail_status, text="boom")
+            return httpx.Response(self.fail_status, headers=self.fail_headers or {}, text=self.fail_body)
         path = request.url.path
         q = dict(request.url.params)
         if path.endswith("/Board/Search"):
